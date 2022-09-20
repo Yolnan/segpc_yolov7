@@ -1,0 +1,4 @@
+mask_topic: "/yolov7/Detection"
+image_topic: "/camera/align_depth_to_color/image_raw"
+camera_info_topic: "/camera/align_depth_to_color/camera_info"
+publish_topic: "/segpc"

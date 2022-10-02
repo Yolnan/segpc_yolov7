@@ -10,9 +10,8 @@ PcSegmenter::PcSegmenter(ros::NodeHandle& nh)
     PcSegmenter::roiAcquired = false;   // flag to prevent publishing before roi is acquired
     PcSegmenter::imageAcquired = false; // flag to prevent publishing before depth image is acquired
     PcSegmenter::cameraInfoSub = PcSegmenter::nh.subscribe(PcSegmenter::camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
+    PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZ>>(PcSegmenter::pcTopic, 1);
     // PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(PcSegmenter::pcTopic, 1);
-    image_transport::ImageTransport it(PcSegmenter::nh);
-    PcSegmenter::pub = it.advertise(PcSegmenter::pcTopic, 1);
     PcSegmenter::classList = {"person", "chair", "tvmonitor", "bottle", "cell phone"};
     PcSegmenter::colors = {{255, 255, 255}, {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 0, 255}};
     PcSegmenter::colorDict = { {classList[0], colors[0]},
@@ -70,7 +69,7 @@ void PcSegmenter::cbCameraInfo(const sensor_msgs::CameraInfo& msg)
     double ppy = msg.K[5];
 
     // calculate camera matrix inverse, store parameters as float64
-    PcSegmenter::camMatInv = (cv::Mat_<double>(2,3) << 1/fx, 0, -ppx*fy/(fx*fy), 0, 1/fy, -ppy/fy);    // assume skew is zero
+    PcSegmenter::camMatInv = (cv::Mat_<double>(2,3) << 1/fx, 0, -ppx/fx, 0, 1/fy, -ppy/fy);    // assume skew is zero
 
     // unregister camera info subscriber
     PcSegmenter::cameraInfoSub.shutdown();
@@ -100,7 +99,6 @@ void PcSegmenter::publishPc()
 
         // iterate through all detected objects
         cv::Mat outputImage = inputImage.clone();
-        // cv::Mat compositeMask = cv::Mat::zeros(inputImage.size(), inputImage.type());  // what data type is input mask? 8UC1?
         cv::Mat compositeMask = cv_bridge::toCvCopy(objDataList[0].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
         for (unsigned int i = 1; i < objDataList.size(); i++) 
         {
@@ -108,33 +106,38 @@ void PcSegmenter::publishPc()
             cv::Mat tempCompositeMask = compositeMask.clone();
             cv::Mat currMask = cv_bridge::toCvCopy(objDataList[i].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
             cv::bitwise_or(tempCompositeMask, currMask, compositeMask);
-
-
         }
 
         // apply mask
-        inputImage.copyTo(outputImage, compositeMask);
-        sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::TYPE_16UC1, outputImage).toImageMsg();
-        PcSegmenter::pub.publish(msg);
-
-        // // deproject depth image
-        // pcl::PointCloud<pcl::PointXYZ>cloud;
-        // cloud.header.frame_id = PcSegmenter::camFrameID;
-        // for (unsigned int u = 0; u < outputImage.rows; u++)
-        // {
-        //     for (unsigned int v = 0; v < outputImage.cols; v++)
-        //     {
-        //         if (outputImage.at<unsigned int>(u,v) > 0)  // ignore depth values of 0
-        //         {
-        //             double z = outputImage.at<unsigned int>(u,v);
-        //             double x = (PcSegmenter::camMatInv.at<unsigned int>(0,0)*v + PcSegmenter::camMatInv.at<unsigned int>(0,2))*z; 
-        //             double y = (PcSegmenter::camMatInv.at<unsigned int>(1,1)*u + PcSegmenter::camMatInv.at<unsigned int>(1,2))*z; 
-        //             cloud.points.push_back(pcl::PointXYZ(z,-x,-y)); // xyz is rotated to transform from camera frame coords to TF of camera
-        //         }
-        //     }
-        // }
-        // pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);
-        // PcSegmenter::pub.publish(cloud);
+        // inputImage.copyTo(outputImage, compositeMask);
+        // deproject depth image
+        pcl::PointCloud<pcl::PointXYZ>cloud;
+        // pcl::PointCloud<pcl::PointXYZRGB>cloud;
+        for (unsigned int u = 0; u < compositeMask.rows; u++)
+        {
+            for (unsigned int v = 0; v < compositeMask.cols; v++)
+            {
+                if (compositeMask.at<unsigned char>(u,v) > 0 && inputImage.at<unsigned int>(u,v) > 30 && inputImage.at<unsigned int>(u,v) < 10000)  // ignore min max depth values and pixels outside of mask
+                {
+                    pcl::PointXYZ point;
+                    // pcl::PointXYZRGB point;
+                    double z = (double)inputImage.at<unsigned int>(u,v);
+                    double x = (PcSegmenter::camMatInv.at<double>(0,0)*(double)v + PcSegmenter::camMatInv.at<double>(0,2))*z; 
+                    double y = (PcSegmenter::camMatInv.at<double>(1,1)*(double)u + PcSegmenter::camMatInv.at<double>(1,2))*z;
+                    // xyz is rotated to transform from camera frame coords to TF of camera
+                    point.x = (float)z/1000;
+                    point.y = (float)-x/1000;
+                    point.z = (float)-y/1000;
+                    // std::uint32_t rgb = (static_cast<std::uint32_t>(255) << 16 | 
+                    //                      static_cast<std::uint32_t>(255) << 8 | static_cast<std::uint32_t>(255));
+                    // point.rgb = *reinterpret_cast<float*>(&rgb);
+                    cloud.points.push_back(point); 
+                }
+            }
+        }
+        cloud.header.frame_id = PcSegmenter::camFrameID;
+        pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);
+        PcSegmenter::pub.publish(cloud);
     }
     
 }
@@ -149,6 +152,7 @@ int main(int argc, char** argv)
     {
         segmentPcNode.publishPc();
         ros::spinOnce();
+        loopRate.sleep();
     }
     return 0;
 }

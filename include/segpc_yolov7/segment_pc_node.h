@@ -41,8 +41,7 @@ class PcSegmenter
         ros::Subscriber roiSub;
         ros::Subscriber imageSub;
         ros::Subscriber cameraInfoSub;
-        // ros::Publisher pub;
-        image_transport::Publisher pub;
+        ros::Publisher pub;
         std::string camFrameID;
         bool roiAcquired;
         bool imageAcquired;

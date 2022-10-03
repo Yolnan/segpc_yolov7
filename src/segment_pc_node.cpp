@@ -1,22 +1,21 @@
 #include "segpc_yolov7/segment_pc_node.h"
 
-PcSegmenter::PcSegmenter(ros::NodeHandle& nh)
+PcSegmenter::PcSegmenter(ros::NodeHandle& _nh): nh{_nh}
 {
-    PcSegmenter::nh = nh;
-    ros::param::get("/mask_topic", PcSegmenter::roiTopic);
-    ros::param::get("/image_topic", PcSegmenter::imageTopic );
-    ros::param::get("/camera_info_topic", PcSegmenter::camInfoTopic);
-    ros::param::get("/publish_topic", PcSegmenter::pcTopic);
-    PcSegmenter::roiAcquired = false;   // flag to prevent publishing before roi is acquired
-    PcSegmenter::imageAcquired = false; // flag to prevent publishing before depth image is acquired
-    PcSegmenter::cameraInfoSub = PcSegmenter::nh.subscribe(PcSegmenter::camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
-    // PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZ>>(PcSegmenter::pcTopic, 1);
-    PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(PcSegmenter::pcTopic, 5);
-    this->colorAcquired = false;
+    ros::param::get("/mask_topic", roiTopic);
+    ros::param::get("/image_topic", imageTopic );
+    ros::param::get("/camera_info_topic", camInfoTopic);
+    ros::param::get("/publish_topic", pcTopic);
+    roiAcquired = false;   // flag to prevent publishing before roi is acquired
+    imageAcquired = false; // flag to prevent publishing before depth image is acquired
+    cameraInfoSub = nh.subscribe(camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
+    // PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZ>>(pcTopic, 1);
+    PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(pcTopic, 5);
+    colorAcquired = false;
     
-    PcSegmenter::classList = {"person", "chair", "tvmonitor", "bottle", "cell phone"};
-    PcSegmenter::colors = {{255, 255, 255}, {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 0, 255}};
-    PcSegmenter::colorDict = { {classList[0], colors[0]},
+    classList = {"person", "chair", "tvmonitor", "bottle", "cell phone"};
+    colors = {{255, 255, 255}, {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 0, 255}};
+    colorDict = { {classList[0], colors[0]},
                                 {classList[1], colors[1]},
                                 {classList[2], colors[2]},
                                 {classList[3], colors[3]},
@@ -32,11 +31,11 @@ params: yolov7_ros/DetectionDataArray
 */
 void PcSegmenter::cbRoi(const yolov7_ros::DetectionDataArrayConstPtr& msg) 
 {
-    if(PcSegmenter::lock.try_lock())
+    if(lock.try_lock())
     { 
-        PcSegmenter::objDataList = msg->objects;
-        PcSegmenter::roiAcquired = true;
-        PcSegmenter::lock.unlock(); // release the lock 
+        objDataList = msg->objects;
+        roiAcquired = true;
+        lock.unlock(); // release the lock 
     }
 }
 
@@ -46,25 +45,27 @@ nonblocking lock is used to prevent cbDepthImage() from overwriting while publis
 but imageSub keeps running
 params: sensor_msgs/Image
 */
-void PcSegmenter::cbDepthImage(const sensor_msgs::ImageConstPtr& msg) 
+void PcSegmenter::cbDepthImage(const sensor_msgs::ImageConstPtr &msg) 
 {
-    if(PcSegmenter::lock.try_lock())
+    if(lock.try_lock())
     { 
+        std::cout << msg->encoding << "\n";
         //convert ROS sensor image msg to cv::Mat 
-        PcSegmenter::depthImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::TYPE_16UC1)->image; // depth in mm as uint16
-        PcSegmenter::imageAcquired = true;
-        PcSegmenter::lock.unlock(); // release the lock 
+        depthImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::TYPE_16UC1)->image; // depth in mm as uint16
+        // std::cout << std::to_string(depthImage.data->) << "\n";
+        imageAcquired = true;
+        lock.unlock(); // release the lock 
     }
 }
 
 void PcSegmenter::cbColorImage(const sensor_msgs::ImageConstPtr& msg) 
 {
-    if(this->lock.try_lock())
+    if(lock.try_lock())
     { 
         //convert ROS sensor image msg to cv::Mat 
-        this->colorImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::TYPE_8UC3)->image; // depth in mm as uint16
-        this->colorAcquired = true;
-        this->lock.unlock(); // release the lock 
+        colorImage = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::TYPE_8UC3)->image; // depth in mm as uint16
+        colorAcquired = true;
+        lock.unlock(); // release the lock 
     }
 }
 
@@ -75,22 +76,22 @@ params: sensor_msgs/camera_info
 void PcSegmenter::cbCameraInfo(const sensor_msgs::CameraInfo& msg) 
 {
     // extract camera instrinsics parameters
-    PcSegmenter::camFrameID = msg.header.frame_id;
+    camFrameID = msg.header.frame_id;
     float fx = (float)msg.K[0];
     float fy = (float)msg.K[4];
     float ppx = (float)msg.K[2];
     float ppy = (float)msg.K[5];
 
     // calculate camera matrix inverse, store parameters as float64
-    PcSegmenter::camMatInv = (cv::Mat_<float>(2,3) << 1/fx, 0, -ppx/fx, 0, 1/fy, -ppy/fy);    // assume skew is zero
+    camMatInv = (cv::Mat_<float>(2,3) << 1/fx, 0, -ppx/fx, 0, 1/fy, -ppy/fy);    // assume skew is zero
 
     // unregister camera info subscriber
-    PcSegmenter::cameraInfoSub.shutdown();
+    cameraInfoSub.shutdown();
 
     // start bounding box and depth image subscriber threads
-    PcSegmenter::roiSub = PcSegmenter::nh.subscribe(PcSegmenter::roiTopic, 1, &PcSegmenter::cbRoi, this); 
-    PcSegmenter::imageSub = PcSegmenter::nh.subscribe(PcSegmenter::imageTopic, 1, &PcSegmenter::cbDepthImage, this);
-    this->colorSub = PcSegmenter::nh.subscribe("/camera/color/image_raw", 1, &PcSegmenter::cbColorImage, this);
+    roiSub = nh.subscribe(roiTopic, 1, &PcSegmenter::cbRoi, this); 
+    PcSegmenter::imageSub = nh.subscribe(imageTopic, 1, &PcSegmenter::cbDepthImage, this);
+    colorSub = nh.subscribe("/camera/color/image_raw", 1, &PcSegmenter::cbColorImage, this);
 
 }
 
@@ -102,23 +103,25 @@ call to acquire lock is blocking
 void PcSegmenter::publishPc()
 {
     // check if roi and image have been acquired first
-    if (PcSegmenter::roiAcquired == true && PcSegmenter::imageAcquired == true && this->colorAcquired == true) 
+    if (roiAcquired == true && imageAcquired == true && colorAcquired == true) 
     {
-        
+        std::cout << "Publishing\n";
         // read newest data
-        PcSegmenter::lock.lock();
-        cv::Mat inputImage = PcSegmenter::depthImage.clone();
-        std::vector<yolov7_ros::ObjectData> objDataList = PcSegmenter::objDataList;
-        cv::Mat inputColor = this->colorImage.clone();
-        PcSegmenter::lock.unlock();
+        lock.lock();
+        std::cout << "Test1\n";
+
+        cv::Mat inputImage = depthImage.clone();
+        std::vector<yolov7_ros::ObjectData> objDataList_func = objDataList;
+        cv::Mat inputColor = colorImage.clone();
+        std::cout << "Test2\n";
 
         // iterate through all detected objects
-        cv::Mat compositeMask = cv_bridge::toCvCopy(objDataList[0].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
-        for (unsigned int i = 1; i < objDataList.size(); i++) 
+        cv::Mat compositeMask = cv_bridge::toCvCopy(objDataList_func[0].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
+        for (unsigned int i = 1; i < objDataList_func.size(); i++) 
         {
             //bitwise_or to combine masks
             cv::Mat tempCompositeMask = compositeMask.clone();
-            cv::Mat currMask = cv_bridge::toCvCopy(objDataList[i].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
+            cv::Mat currMask = cv_bridge::toCvCopy(objDataList_func[i].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
             cv::bitwise_or(tempCompositeMask, currMask, compositeMask);
         }
 
@@ -129,17 +132,25 @@ void PcSegmenter::publishPc()
         {
             for (unsigned int v = 0; v < compositeMask.cols; v++)
             {
-                if (compositeMask.at<unsigned char>(u,v) > 0 && inputImage.at<unsigned int>(u,v) > 30 && inputImage.at<unsigned int>(u,v) < 10000)  // ignore min max depth values and pixels outside of mask
+                if (compositeMask.at<uint8_t>(u,v) > 0 && inputImage.at<uint16_t>(u,v) > 500 && inputImage.at<uint16_t>(u,v) < 3000)  // ignore min max depth values and pixels outside of mask
                 {
                     // pcl::PointXYZ point;
                     pcl::PointXYZRGB point;
-                    float z = (float)inputImage.at<unsigned int>(u,v)/1000;   // convert depth from mm to m
-                    float x = (PcSegmenter::camMatInv.at<float>(0,0)*((float)v) + PcSegmenter::camMatInv.at<float>(0,2))*z; 
-                    float y = (PcSegmenter::camMatInv.at<float>(1,1)*((float)u) + PcSegmenter::camMatInv.at<float>(1,2))*z;
+                    // float z = (float)inputImage.at<uint16_t>(u,v);   // convert depth from mm to m
+         
+                    float z = (float)inputImage.at<uint16_t>(u,v)/1000;   // convert depth from mm to m
+                    // if ( z < .5)
+                    // {
+                    //     std::cout << std::to_string(z) << " === " << std::to_string(inputImage.at<uint16_t>(u,v)) << "\n";
+                    // }
+                    float x = (camMatInv.at<float>(0,0)*((float)v) + camMatInv.at<float>(0,2))*z; 
+                    float y = (camMatInv.at<float>(1,1)*((float)u) + camMatInv.at<float>(1,2))*z;
                     // xyz is rotated to transform from camera frame coords to TF of camera
                     point.x = z;
                     point.y = -x;
                     point.z = -y;
+                    std::cout << std::to_string(point.x) << " === " << std::to_string(inputImage.at<uint16_t>(u,v)) << "\n";
+
                     std::uint32_t rgb = (static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[0]) << 16 | 
                                          static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[1]) << 8 | static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[2]));
                     point.rgb = *reinterpret_cast<float*>(&rgb);
@@ -147,9 +158,13 @@ void PcSegmenter::publishPc()
                 }
             }
         }
-        cloud.header.frame_id = PcSegmenter::camFrameID;
+        lock.unlock();
+
+        cloud.header.frame_id = camFrameID;
         pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);
-        PcSegmenter::pub.publish(cloud);
+        pub.publish(cloud);
+        std::cout << "Test3\n";
+
     }
     
 }

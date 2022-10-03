@@ -23,8 +23,6 @@
 #include <iostream>
 #include <map>
 #include <vector>
-//debugging shit
-#include <image_transport/image_transport.h>
 
 class PcSegmenter
 {
@@ -40,6 +38,13 @@ class PcSegmenter
         std::string pcTopic;
         ros::Subscriber roiSub;
         ros::Subscriber imageSub;
+
+
+        ros::Subscriber colorSub;
+        cv::Mat colorImage;
+        bool colorAcquired;
+
+
         ros::Subscriber cameraInfoSub;
         ros::Publisher pub;
         std::string camFrameID;
@@ -52,6 +57,7 @@ class PcSegmenter
         PcSegmenter(ros::NodeHandle& nh);
         void cbRoi(const yolov7_ros::DetectionDataArrayConstPtr& detectionData);
         void cbDepthImage(const sensor_msgs::ImageConstPtr& msg);
+        void cbColorImage(const sensor_msgs::ImageConstPtr& msg);
         void cbCameraInfo(const sensor_msgs::CameraInfo& msg);
         void publishPc();
     

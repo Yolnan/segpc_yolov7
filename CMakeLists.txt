@@ -7,7 +7,6 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   yolov7_ros
   cv_bridge
-  image_transport
 )
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)

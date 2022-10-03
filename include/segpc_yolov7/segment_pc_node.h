@@ -34,20 +34,30 @@ class PcSegmenter
         cv::Mat camMatInv;
         std::string roiTopic;
         std::string imageTopic;
+        std::string camInfoTopic;
         std::string pcTopic;
         ros::Subscriber roiSub;
         ros::Subscriber imageSub;
+
+
+        ros::Subscriber colorSub;
+        cv::Mat colorImage;
+        bool colorAcquired;
+
+
         ros::Subscriber cameraInfoSub;
         ros::Publisher pub;
+        std::string camFrameID;
         bool roiAcquired;
         bool imageAcquired;
         std::vector<std::string> classList;
         std::vector<std::vector<unsigned char>> colors;
         std::map<std::string, std::vector<unsigned char>> colorDict;
     public:
-        PcSegmenter(ros::NodeHandle& nh, std::string& roiTopic, std::string& depthImageTopic, std::string& camInfoTopic, std::string& pubTopic);
+        PcSegmenter(ros::NodeHandle& nh);
         void cbRoi(const yolov7_ros::DetectionDataArrayConstPtr& detectionData);
         void cbDepthImage(const sensor_msgs::ImageConstPtr& msg);
+        void cbColorImage(const sensor_msgs::ImageConstPtr& msg);
         void cbCameraInfo(const sensor_msgs::CameraInfo& msg);
         void publishPc();
     

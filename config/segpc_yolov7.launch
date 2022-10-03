@@ -1,4 +1,4 @@
 <launch>
-    <node name="segment_pc_node" pkg="segpc_yolov7" type="segment_pc_node" />
+    <node name="segment_pc_node" pkg="segpc_yolov7" type="segment_pc_node" output="screen"/>
     <rosparam file="$(find segpc_yolov7)/config/params.yaml" />
 </launch>

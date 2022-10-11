@@ -3,15 +3,17 @@
 PcSegmenter::PcSegmenter(ros::NodeHandle& _nh): nh{_nh}
 {
     ros::param::get("/mask_topic", roiTopic);
-    ros::param::get("/image_topic", imageTopic );
+    ros::param::get("/depth_topic", depthTopic);
+    ros::param::get("/color_topic", colorTopic );
     ros::param::get("/camera_info_topic", camInfoTopic);
     ros::param::get("/publish_topic", pcTopic);
     roiAcquired = false;   // flag to prevent publishing before roi is acquired
-    imageAcquired = false; // flag to prevent publishing before depth image is acquired
+    depthAcquired = false; // flag to prevent publishing before depth image is acquired
+    colorAcquired = false; // flag to prevent publishing before color image is acquired
     cameraInfoSub = nh.subscribe(camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
     // PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZ>>(pcTopic, 1);
     PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(pcTopic, 5);
-    colorAcquired = false;
+    
     
     classList = {"person", "chair", "tvmonitor", "bottle", "cell phone"};
     colors = {{255, 255, 255}, {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 0, 255}};
@@ -59,7 +61,7 @@ void PcSegmenter::cbDepthImage(const sensor_msgs::ImageConstPtr &msg)
     { 
         //convert ROS sensor image msg to cv::Mat 
         depthImage = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_16UC1)->image; // depth in mm as uint16
-        imageAcquired = true;
+        depthAcquired = true;
         lock.unlock(); // release the lock 
     }
 }
@@ -104,8 +106,8 @@ void PcSegmenter::cbCameraInfo(const sensor_msgs::CameraInfo& msg)
 
     // start bounding box and depth image subscriber threads
     roiSub = nh.subscribe(roiTopic, 1, &PcSegmenter::cbRoi, this); 
-    PcSegmenter::imageSub = nh.subscribe(imageTopic, 1, &PcSegmenter::cbDepthImage, this);
-    colorSub = nh.subscribe("/camera/color/image_raw", 1, &PcSegmenter::cbColorImage, this);
+    PcSegmenter::depthSub = nh.subscribe(depthTopic, 1, &PcSegmenter::cbDepthImage, this);
+    colorSub = nh.subscribe(colorTopic, 1, &PcSegmenter::cbColorImage, this);
 
 }
 
@@ -117,7 +119,7 @@ call to acquire lock is blocking
 void PcSegmenter::publishPc()
 {
     // check if roi and image have been acquired first
-    if (roiAcquired == true && imageAcquired == true && colorAcquired == true) 
+    if (roiAcquired == true && depthAcquired == true && colorAcquired == true) 
     {
         // read newest data
         lock.lock();
@@ -127,7 +129,7 @@ void PcSegmenter::publishPc()
         cv::Mat inputColor = colorImage.clone();
         lock.unlock();
         roiAcquired = false;
-        imageAcquired = false;
+        depthAcquired = false;
         colorAcquired = false;
         // iterate through all detected objects
         
@@ -168,7 +170,7 @@ void PcSegmenter::publishPc()
                 }
             }
         }
-        
+
         cloud.header.frame_id = camFrameID;
         pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);
         pub.publish(cloud);

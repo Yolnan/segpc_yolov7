@@ -29,27 +29,30 @@ class PcSegmenter
     private:
         ros::NodeHandle nh;
         std::mutex lock;
-        std::vector<yolov7_ros::ObjectData> objDataList;
-        cv::Mat depthImage;
-        cv::Mat camMatInv;
+
         std::string roiTopic;
-        std::string imageTopic;
-        std::string camInfoTopic;
-        std::string pcTopic;
         ros::Subscriber roiSub;
-        ros::Subscriber imageSub;
+        std::vector<yolov7_ros::ObjectData> objDataList;
+        bool roiAcquired;
 
+        std::string depthTopic;
+        ros::Subscriber depthSub;
+        cv::Mat depthImage;
+        bool depthAcquired;
 
+        std::string colorTopic;
         ros::Subscriber colorSub;
         cv::Mat colorImage;
         bool colorAcquired;
 
-
+        std::string camInfoTopic;
         ros::Subscriber cameraInfoSub;
-        ros::Publisher pub;
+        cv::Mat camMatInv;
         std::string camFrameID;
-        bool roiAcquired;
-        bool imageAcquired;
+        
+        ros::Publisher pub;
+        std::string pcTopic;
+        
         std::vector<std::string> classList;
         std::vector<std::vector<unsigned char>> colors;
         std::map<std::string, std::vector<unsigned char>> colorDict;

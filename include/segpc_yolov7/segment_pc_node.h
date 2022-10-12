@@ -53,6 +53,8 @@ class PcSegmenter
         ros::Publisher pub;
         std::string pcTopic;
         
+        ushort minDepth;
+        ushort maxDepth;
         std::vector<std::string> classList;
         std::vector<std::vector<unsigned char>> colors;
         std::map<std::string, std::vector<unsigned char>> colorDict;

@@ -13,7 +13,12 @@ PcSegmenter::PcSegmenter(ros::NodeHandle& _nh): nh{_nh}
     cameraInfoSub = nh.subscribe(camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
     // PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZ>>(pcTopic, 1);
     PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(pcTopic, 5);
-    
+
+    int minDepthInt, maxDepthInt;
+    ros::param::get("/min_depth", minDepthInt);
+    ros::param::get("/max_depth", maxDepthInt);
+    minDepth = minDepthInt;
+    maxDepth = maxDepthInt;
     
     classList = {"person", "chair", "tvmonitor", "bottle", "cell phone"};
     colors = {{255, 255, 255}, {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 0, 255}};

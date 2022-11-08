@@ -147,34 +147,80 @@ void PcSegmenter::publishPc()
             cv::Mat currMask = cv_bridge::toCvCopy(objDataList_func[i].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
             cv::bitwise_or(tempCompositeMask, currMask, compositeMask);
         }
+
+        //extract Shi-Tomasi features
+        cv::Mat inputGray;
+        cv::cvtColor(inputColor, inputGray, cv::COLOR_BGR2GRAY);
+        int maxCorners = objDataList_func.size()*8;
+        maxCorners = MAX(maxCorners, 1);
+        std::vector<cv::Point2f> corners;
+        double qualityLevel = 0.01;
+        double minDistance = 10;
+        int blockSize = 3, gradientSize = 3;
+        bool useHarrisDetector = false;
+        double k = 0.04;
+        cv::goodFeaturesToTrack(inputGray,
+                                corners,
+                                maxCorners,
+                                qualityLevel,
+                                minDistance,
+                                compositeMask,
+                                blockSize,
+                                gradientSize,
+                                useHarrisDetector,
+                                k);
+
         // deproject depth image
         // pcl::PointCloud<pcl::PointXYZ>cloud;
         pcl::PointCloud<pcl::PointXYZRGB>cloud;
-        for (unsigned int u = 0; u < inputDepth.rows; u++)
+        for (unsigned int i = 0; i < corners.size(); i++)
         {
-            for (unsigned int v = 0; v < inputDepth.cols; v++)
+            unsigned int u = corners[i].x;
+            unsigned int v = corners[i].y;
+            if (inputDepth.at<ushort>(u,v) > 500 && inputDepth.at<ushort>(u,v) < 3000)  // ignore min max depth values and pixels outside of mask
             {
+                // pcl::PointXYZ point;
+                pcl::PointXYZRGB point;
+                float z = (inputDepth.at<ushort>(u,v))/1000.0f;   // convert depth from mm to m
+                float x = (camMatInv.at<float>(0,0)*(v) + camMatInv.at<float>(0,2))*z; 
+                float y = (camMatInv.at<float>(1,1)*(u) + camMatInv.at<float>(1,2))*z;
+                // xyz is rotated to transform from camera frame coords to TF of camera
+                point.x = z;
+                point.y = -x;
+                point.z = -y;
 
-                if (compositeMask.at<uchar>(u,v) > 0 && inputDepth.at<ushort>(u,v) > 500 && inputDepth.at<ushort>(u,v) < 3000)  // ignore min max depth values and pixels outside of mask
-                {
-                    // pcl::PointXYZ point;
-                    pcl::PointXYZRGB point;
-                    float z = (inputDepth.at<ushort>(u,v))/1000.0f;   // convert depth from mm to m
-                    float x = (camMatInv.at<float>(0,0)*(v) + camMatInv.at<float>(0,2))*z; 
-                    float y = (camMatInv.at<float>(1,1)*(u) + camMatInv.at<float>(1,2))*z;
-                    // xyz is rotated to transform from camera frame coords to TF of camera
-                    point.x = z;
-                    point.y = -x;
-                    point.z = -y;
+                std::uint32_t rgb = (static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[0]) << 16 | 
+                                        static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[1]) << 8 | static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[2]));
 
-                    std::uint32_t rgb = (static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[0]) << 16 | 
-                                         static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[1]) << 8 | static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[2]));
-
-                    point.rgb = *reinterpret_cast<float*>(&rgb);
-                    cloud.points.push_back(point);
-                }
+                point.rgb = *reinterpret_cast<float*>(&rgb);
+                cloud.points.push_back(point);
             }
         }
+        // for (unsigned int u = 0; u < inputDepth.rows; u++)
+        // {
+        //     for (unsigned int v = 0; v < inputDepth.cols; v++)
+        //     {
+
+        //         if (compositeMask.at<uchar>(u,v) > 0 && inputDepth.at<ushort>(u,v) > 500 && inputDepth.at<ushort>(u,v) < 3000)  // ignore min max depth values and pixels outside of mask
+        //         {
+        //             // pcl::PointXYZ point;
+        //             pcl::PointXYZRGB point;
+        //             float z = (inputDepth.at<ushort>(u,v))/1000.0f;   // convert depth from mm to m
+        //             float x = (camMatInv.at<float>(0,0)*(v) + camMatInv.at<float>(0,2))*z; 
+        //             float y = (camMatInv.at<float>(1,1)*(u) + camMatInv.at<float>(1,2))*z;
+        //             // xyz is rotated to transform from camera frame coords to TF of camera
+        //             point.x = z;
+        //             point.y = -x;
+        //             point.z = -y;
+
+        //             std::uint32_t rgb = (static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[0]) << 16 | 
+        //                                  static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[1]) << 8 | static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[2]));
+
+        //             point.rgb = *reinterpret_cast<float*>(&rgb);
+        //             cloud.points.push_back(point);
+        //         }
+        //     }
+        // }
 
         cloud.header.frame_id = camFrameID;
         pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);

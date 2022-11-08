@@ -177,7 +177,7 @@ void PcSegmenter::publishPc()
         {
             unsigned int u = corners[i].x;
             unsigned int v = corners[i].y;
-            if (inputDepth.at<ushort>(u,v) > 500 && inputDepth.at<ushort>(u,v) < 3000)  // ignore min max depth values and pixels outside of mask
+            if (inputDepth.at<ushort>(u,v) > minDepth && inputDepth.at<ushort>(u,v) < maxDepth)  // ignore min max depth values and pixels outside of mask
             {
                 // pcl::PointXYZ point;
                 pcl::PointXYZRGB point;
@@ -201,7 +201,7 @@ void PcSegmenter::publishPc()
         //     for (unsigned int v = 0; v < inputDepth.cols; v++)
         //     {
 
-        //         if (compositeMask.at<uchar>(u,v) > 0 && inputDepth.at<ushort>(u,v) > 500 && inputDepth.at<ushort>(u,v) < 3000)  // ignore min max depth values and pixels outside of mask
+        //         if (compositeMask.at<uchar>(u,v) > 0 && inputDepth.at<ushort>(u,v) > minDepth && inputDepth.at<ushort>(u,v) < maxDepth)  // ignore min max depth values and pixels outside of mask
         //         {
         //             // pcl::PointXYZ point;
         //             pcl::PointXYZRGB point;

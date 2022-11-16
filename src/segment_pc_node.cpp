@@ -111,11 +111,59 @@ void PcSegmenter::cbCameraInfo(const sensor_msgs::CameraInfo& msg)
 
     // start bounding box and depth image subscriber threads
     roiSub = nh.subscribe(roiTopic, 1, &PcSegmenter::cbRoi, this); 
-    PcSegmenter::depthSub = nh.subscribe(depthTopic, 1, &PcSegmenter::cbDepthImage, this);
+    depthSub = nh.subscribe(depthTopic, 1, &PcSegmenter::cbDepthImage, this);
     colorSub = nh.subscribe(colorTopic, 1, &PcSegmenter::cbColorImage, this);
 
 }
 
+/*
+combine detection mask using bitwise_or
+*/
+cv::Mat PcSegmenter::combineMask(std::vector<yolov7_ros::ObjectData>& inputObjData)
+{
+    // iterate through all detected objects
+    
+    cv::Mat compositeMask = cv_bridge::toCvCopy(inputObjData[0].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
+
+    for (unsigned int i = 1; i < inputObjData.size(); i++) 
+    {
+        //bitwise_or to combine masks
+        cv::Mat tempCompositeMask = compositeMask.clone();
+        cv::Mat currMask = cv_bridge::toCvCopy(inputObjData[i].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
+        cv::bitwise_or(tempCompositeMask, currMask, compositeMask);
+    }
+    return compositeMask;
+}
+
+/*
+extract shi-tomasi features from color image
+*/
+std::vector<cv::Point2f> PcSegmenter::getShiTomasi(cv::Mat& inputColor, cv::Mat& mask, int maxCorners) 
+{
+    //extract Shi-Tomasi features
+    cv::Mat inputGray;
+    cv::cvtColor(inputColor, inputGray, cv::COLOR_BGR2GRAY);
+    maxCorners = MAX(maxCorners, 1);
+    std::vector<cv::Point2f> corners;
+    double qualityLevel = 0.01;
+    double minDistance = 10;
+    int blockSize = 3, gradientSize = 3;
+    bool useHarrisDetector = false;
+    double k = 0.04;
+    cv::goodFeaturesToTrack(inputGray,
+                            corners,
+                            maxCorners,
+                            qualityLevel,
+                            minDistance,
+                            mask,
+                            blockSize,
+                            gradientSize,
+                            useHarrisDetector,
+                            k);
+    return corners;
+
+}
+ 
 /*
 callback to publish pointcloud using roi, depthImage, and cameraInfo
 acquires lock to read roi, depthImage, and cameraInfo
@@ -130,53 +178,25 @@ void PcSegmenter::publishPc()
         lock.lock();
         
         cv::Mat inputDepth = depthImage.clone();
-        std::vector<yolov7_ros::ObjectData> objDataList_func = objDataList;
+        std::vector<yolov7_ros::ObjectData> inputObjData = objDataList;
         cv::Mat inputColor = colorImage.clone();
         lock.unlock();
         roiAcquired = false;
         depthAcquired = false;
         colorAcquired = false;
-        // iterate through all detected objects
-        
-        cv::Mat compositeMask = cv_bridge::toCvCopy(objDataList_func[0].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
+        // combine masks
+        cv::Mat compositeMask = combineMask(inputObjData);
 
-        for (unsigned int i = 1; i < objDataList_func.size(); i++) 
-        {
-            //bitwise_or to combine masks
-            cv::Mat tempCompositeMask = compositeMask.clone();
-            cv::Mat currMask = cv_bridge::toCvCopy(objDataList_func[i].mask, sensor_msgs::image_encodings::TYPE_8UC1)->image;
-            cv::bitwise_or(tempCompositeMask, currMask, compositeMask);
-        }
-
-        //extract Shi-Tomasi features
-        cv::Mat inputGray;
-        cv::cvtColor(inputColor, inputGray, cv::COLOR_BGR2GRAY);
-        int maxCorners = objDataList_func.size()*8;
-        maxCorners = MAX(maxCorners, 1);
-        std::vector<cv::Point2f> corners;
-        double qualityLevel = 0.01;
-        double minDistance = 10;
-        int blockSize = 3, gradientSize = 3;
-        bool useHarrisDetector = false;
-        double k = 0.04;
-        cv::goodFeaturesToTrack(inputGray,
-                                corners,
-                                maxCorners,
-                                qualityLevel,
-                                minDistance,
-                                compositeMask,
-                                blockSize,
-                                gradientSize,
-                                useHarrisDetector,
-                                k);
+        // extract Shi-Tomasi features
+        std::vector<cv::Point2f> corners = getShiTomasi(inputColor, compositeMask, 80);
 
         // deproject depth image
         // pcl::PointCloud<pcl::PointXYZ>cloud;
         pcl::PointCloud<pcl::PointXYZRGB>cloud;
         for (unsigned int i = 0; i < corners.size(); i++)
         {
-            unsigned int u = corners[i].x;
-            unsigned int v = corners[i].y;
+            auto u = corners[i].y;
+            auto v = corners[i].x;
             if (inputDepth.at<ushort>(u,v) > minDepth && inputDepth.at<ushort>(u,v) < maxDepth)  // ignore min max depth values and pixels outside of mask
             {
                 // pcl::PointXYZ point;

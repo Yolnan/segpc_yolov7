@@ -64,6 +64,8 @@ class PcSegmenter
         void cbDepthImage(const sensor_msgs::ImageConstPtr& msg);
         void cbColorImage(const sensor_msgs::ImageConstPtr& msg);
         void cbCameraInfo(const sensor_msgs::CameraInfo& msg);
+        cv::Mat combineMask(std::vector<yolov7_ros::ObjectData>& inputObjData);
+        std::vector<cv::Point2f> getShiTomasi(cv::Mat& inputColor, cv::Mat& mask, int maxCorners);
         void publishPc();
     
 };

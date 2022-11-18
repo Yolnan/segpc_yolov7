@@ -58,8 +58,9 @@ class PcSegmenter
         std::string camFrameID;
         
         // publisher
-        ros::Publisher pub;
+        ros::Publisher cloudPub;
         std::string pcTopic;
+        image_transport::Publisher imgPub;
         
         // depth range filter params
         ushort minDepth;
@@ -75,6 +76,7 @@ class PcSegmenter
         std::vector<cv::Point2f> getShiTomasi(cv::Mat& inputColor, cv::Mat& mask, int maxCorners);
         void deprojDepth(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat& inputColor, cv::Mat& inputDepth, cv::Mat& mask);
         void deprojShiTomasi(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat& inputColor, cv::Mat& inputDepth, std::vector<cv::Point2f>& corners);
+        void showShiTomasi(cv::Mat& inputColor, cv::Mat& outputColor, std::vector<cv::Point2f>& corners);
         void publishPc();
         
     

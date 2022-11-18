@@ -19,10 +19,9 @@ PcSegmenter::PcSegmenter(ros::NodeHandle& _nh): nh{_nh}
     maxDepth = maxDepthInt;
     
     cameraInfoSub = nh.subscribe(camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
-    // PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZ>>(pcTopic, 1);
-    PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(pcTopic, 5);
+    cloudPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(pcTopic, 5);
     image_transport::ImageTransport it(nh);
-    image_transport::Publisher pub = it.advertise("/segpc_yolov7/color_features", 1);
+    imgPub = it.advertise("/segpc_yolov7/color_features", 1);
 }       
 
 /*
@@ -159,7 +158,8 @@ std::vector<cv::Point2f> PcSegmenter::getShiTomasi(cv::Mat& inputColor, cv::Mat&
 }
 
 /*
-deproject depth pixels in mask to pointcloud
+deproject depth pixels in mask to pointcloud (unstructured)
+points are added to cloud object
 */
 void PcSegmenter::deprojDepth(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat& inputColor, cv::Mat& inputDepth, cv::Mat& mask) 
 {
@@ -191,7 +191,8 @@ void PcSegmenter::deprojDepth(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat&
 }
 
 /*
-deproject Shi-Tomasi features to pointcloud
+deproject Shi-Tomasi features to pointcloud (unstructured)
+points are added to cloud object
 */
 void PcSegmenter::deprojShiTomasi(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat& inputColor, cv::Mat& inputDepth, std::vector<cv::Point2f>& corners) 
 {
@@ -216,6 +217,20 @@ void PcSegmenter::deprojShiTomasi(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::
             point.rgb = *reinterpret_cast<float*>(&rgb);
             cloud.points.push_back(point);
         }
+    }
+}
+
+/*
+highlight Shi-Tomasi features in color iamge
+*/
+void PcSegmenter::showShiTomasi(cv::Mat& inputColor, cv::Mat& outputColor, std::vector<cv::Point2f>& corners) 
+{   
+    int radius = 4;
+    for (unsigned int i = 0; i < corners.size(); i++)
+    {
+        auto u = corners[i].y;
+        auto v = corners[i].x;
+        cv::circle(outputColor, corners[i], radius, cv::Scalar(0, 255, 0, cv::FILLED));
     }
 }
  
@@ -251,7 +266,15 @@ void PcSegmenter::publishPc()
         deprojShiTomasi(cloud, inputColor, inputDepth, corners); 
         cloud.header.frame_id = camFrameID;
         pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);
-        pub.publish(cloud);
+        cloudPub.publish(cloud);
+
+        // publish image with shi-tomasi features
+        cv::Mat outputColor = inputColor.clone();
+        cv::cvtColor(inputColor, outputColor, cv::COLOR_BGR2RGB);
+        showShiTomasi(inputColor, outputColor, corners);
+        sensor_msgs::ImagePtr imgMsg;
+        imgMsg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", outputColor).toImageMsg();
+        imgPub.publish(imgMsg);
     }
     
 }

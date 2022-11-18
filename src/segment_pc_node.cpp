@@ -157,6 +157,67 @@ std::vector<cv::Point2f> PcSegmenter::getShiTomasi(cv::Mat& inputColor, cv::Mat&
     return corners;
 
 }
+
+/*
+deproject depth pixels in mask to pointcloud
+*/
+void PcSegmenter::deprojDepth(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat& inputColor, cv::Mat& inputDepth, cv::Mat& mask) 
+{
+    for (unsigned int u = 0; u < inputDepth.rows; u++)
+    {
+        for (unsigned int v = 0; v < inputDepth.cols; v++)
+        {
+
+            if (mask.at<uchar>(u,v) > 0 && inputDepth.at<ushort>(u,v) > minDepth && inputDepth.at<ushort>(u,v) < maxDepth)  // ignore min max depth values and pixels outside of mask
+            {
+                // pcl::PointXYZ point;
+                pcl::PointXYZRGB point;
+                float z = (inputDepth.at<ushort>(u,v))/1000.0f;   // convert depth from mm to m
+                float x = (camMatInv.at<float>(0,0)*(v) + camMatInv.at<float>(0,2))*z; 
+                float y = (camMatInv.at<float>(1,1)*(u) + camMatInv.at<float>(1,2))*z;
+                // xyz is rotated to transform from camera frame coords to TF of camera
+                point.x = z;
+                point.y = -x;
+                point.z = -y;
+
+                std::uint32_t rgb = (static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[0]) << 16 | 
+                                        static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[1]) << 8 | static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[2]));
+
+                point.rgb = *reinterpret_cast<float*>(&rgb);
+                cloud.points.push_back(point);
+            }
+        }
+    }
+}
+
+/*
+deproject Shi-Tomasi features to pointcloud
+*/
+void PcSegmenter::deprojShiTomasi(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat& inputColor, cv::Mat& inputDepth, std::vector<cv::Point2f>& corners) 
+{
+    for (unsigned int i = 0; i < corners.size(); i++)
+    {
+        auto u = corners[i].y;
+        auto v = corners[i].x;
+        if (inputDepth.at<ushort>(u,v) > minDepth && inputDepth.at<ushort>(u,v) < maxDepth)  // ignore min max depth values and pixels outside of mask
+        {
+            pcl::PointXYZRGB point;
+            float z = (inputDepth.at<ushort>(u,v))/1000.0f;   // convert depth from mm to m
+            float x = (camMatInv.at<float>(0,0)*(v) + camMatInv.at<float>(0,2))*z; 
+            float y = (camMatInv.at<float>(1,1)*(u) + camMatInv.at<float>(1,2))*z;
+            // xyz is rotated to transform from camera frame coords to TF of camera
+            point.x = z;
+            point.y = -x;
+            point.z = -y;
+
+            std::uint32_t rgb = (static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[0]) << 16 | 
+                                    static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[1]) << 8 | static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[2]));
+
+            point.rgb = *reinterpret_cast<float*>(&rgb);
+            cloud.points.push_back(point);
+        }
+    }
+}
  
 /*
 callback to publish pointcloud using roi, depthImage, and cameraInfo
@@ -187,59 +248,10 @@ void PcSegmenter::publishPc()
         // deproject depth image
         // pcl::PointCloud<pcl::PointXYZ>cloud;
         pcl::PointCloud<pcl::PointXYZRGB>cloud;
-        for (unsigned int i = 0; i < corners.size(); i++)
-        {
-            auto u = corners[i].y;
-            auto v = corners[i].x;
-            if (inputDepth.at<ushort>(u,v) > minDepth && inputDepth.at<ushort>(u,v) < maxDepth)  // ignore min max depth values and pixels outside of mask
-            {
-                // pcl::PointXYZ point;
-                pcl::PointXYZRGB point;
-                float z = (inputDepth.at<ushort>(u,v))/1000.0f;   // convert depth from mm to m
-                float x = (camMatInv.at<float>(0,0)*(v) + camMatInv.at<float>(0,2))*z; 
-                float y = (camMatInv.at<float>(1,1)*(u) + camMatInv.at<float>(1,2))*z;
-                // xyz is rotated to transform from camera frame coords to TF of camera
-                point.x = z;
-                point.y = -x;
-                point.z = -y;
-
-                std::uint32_t rgb = (static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[0]) << 16 | 
-                                        static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[1]) << 8 | static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[2]));
-
-                point.rgb = *reinterpret_cast<float*>(&rgb);
-                cloud.points.push_back(point);
-            }
-        }
-        // for (unsigned int u = 0; u < inputDepth.rows; u++)
-        // {
-        //     for (unsigned int v = 0; v < inputDepth.cols; v++)
-        //     {
-
-        //         if (compositeMask.at<uchar>(u,v) > 0 && inputDepth.at<ushort>(u,v) > minDepth && inputDepth.at<ushort>(u,v) < maxDepth)  // ignore min max depth values and pixels outside of mask
-        //         {
-        //             // pcl::PointXYZ point;
-        //             pcl::PointXYZRGB point;
-        //             float z = (inputDepth.at<ushort>(u,v))/1000.0f;   // convert depth from mm to m
-        //             float x = (camMatInv.at<float>(0,0)*(v) + camMatInv.at<float>(0,2))*z; 
-        //             float y = (camMatInv.at<float>(1,1)*(u) + camMatInv.at<float>(1,2))*z;
-        //             // xyz is rotated to transform from camera frame coords to TF of camera
-        //             point.x = z;
-        //             point.y = -x;
-        //             point.z = -y;
-
-        //             std::uint32_t rgb = (static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[0]) << 16 | 
-        //                                  static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[1]) << 8 | static_cast<std::uint32_t>(inputColor.at<cv::Vec3b>(u,v)[2]));
-
-        //             point.rgb = *reinterpret_cast<float*>(&rgb);
-        //             cloud.points.push_back(point);
-        //         }
-        //     }
-        // }
-
+        deprojShiTomasi(cloud, inputColor, inputDepth, corners); 
         cloud.header.frame_id = camFrameID;
         pcl_conversions::toPCL(ros::Time::now(), cloud.header.stamp);
         pub.publish(cloud);
-
     }
     
 }

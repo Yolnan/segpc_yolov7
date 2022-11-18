@@ -1,8 +1,20 @@
+# subscriber topics
 mask_topic: "/yolov7/Detection"
 depth_topic: "/camera/aligned_depth_to_color/image_raw"
-min_depth: 500  # (mm)
-max_depth: 10000 # (mm)
 color_topic: "/camera/color/image_raw"
 camera_info_topic: "camera/aligned_depth_to_color/camera_info"
-publish_topic: "/segpc_yolov7/points"
+# depth range filter
+min_depth: 500  # (mm)
+max_depth: 10000 # (mm)
+# shi-tomasi params
+maxCorners: 80
+qualityLevel: 0.01
+minDistance: 10
+blockSize: 3
+gradientSize: 3
+useHarrisDetector: false
+k: 0.04
+# publisher topics
+cloud_publish_topic: "/segpc_yolov7/points"
+image_publish_topic: "/segpc_yolov7/color_features"
 publish_rate: 10

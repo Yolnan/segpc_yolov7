@@ -59,12 +59,21 @@ class PcSegmenter
         
         // publisher
         ros::Publisher cloudPub;
-        std::string pcTopic;
+        std::string cloudTopic;
         image_transport::Publisher imgPub;
+        std::string imgPubTopic;
         
         // depth range filter params
         ushort minDepth;
         ushort maxDepth;
+
+        //Shi-Tomasi params
+        int maxCorners;
+        double qualityLevel;
+        double minDistance;
+        int blockSize, gradientSize;
+        bool useHarrisDetector;
+        double k;
 
     public:
         PcSegmenter(ros::NodeHandle& nh);
@@ -73,7 +82,7 @@ class PcSegmenter
         void cbColorImage(const sensor_msgs::ImageConstPtr& msg);
         void cbCameraInfo(const sensor_msgs::CameraInfo& msg);
         cv::Mat combineMask(std::vector<yolov7_ros::ObjectData>& inputObjData);
-        std::vector<cv::Point2f> getShiTomasi(cv::Mat& inputColor, cv::Mat& mask, int maxCorners);
+        std::vector<cv::Point2f> getShiTomasi(cv::Mat& inputColor, cv::Mat& mask);
         void deprojDepth(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat& inputColor, cv::Mat& inputDepth, cv::Mat& mask);
         void deprojShiTomasi(pcl::PointCloud<pcl::PointXYZRGB>& cloud, cv::Mat& inputColor, cv::Mat& inputDepth, std::vector<cv::Point2f>& corners);
         void showShiTomasi(cv::Mat& inputColor, cv::Mat& outputColor, std::vector<cv::Point2f>& corners);

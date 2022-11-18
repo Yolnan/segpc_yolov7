@@ -2,26 +2,41 @@
 
 PcSegmenter::PcSegmenter(ros::NodeHandle& _nh): nh{_nh}
 {
+    // topic names
     ros::param::get("/mask_topic", roiTopic);
     ros::param::get("/depth_topic", depthTopic);
     ros::param::get("/color_topic", colorTopic );
     ros::param::get("/camera_info_topic", camInfoTopic);
-    ros::param::get("/publish_topic", pcTopic);
+    ros::param::get("/cloud_publish_topic", cloudTopic);
+    ros::param::get("/image_publish_topic", imgPubTopic);
 
+    // flags for locking
     roiAcquired = false;   // flag to prevent publishing before roi is acquired
     depthAcquired = false; // flag to prevent publishing before depth image is acquired
     colorAcquired = false; // flag to prevent publishing before color image is acquired
 
+    // depth range filter params
     int minDepthInt, maxDepthInt;
     ros::param::get("/min_depth", minDepthInt);
     ros::param::get("/max_depth", maxDepthInt);
     minDepth = minDepthInt;
     maxDepth = maxDepthInt;
+
+    // Shi-Tomasi params
+    ros::param::get("maxCorners", maxCorners);
+    maxCorners = MAX(maxCorners, 1);
+    ros::param::get("qualityLevel", qualityLevel);
+    ros::param::get("minDistance", minDistance);
+    ros::param::get("blockSize", blockSize);
+    ros::param::get("blockSize", blockSize);
+    ros::param::get("gradientSize", gradientSize);
+    ros::param::get("k", k);
     
+    // start subscribers and publishers
     cameraInfoSub = nh.subscribe(camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
-    cloudPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(pcTopic, 5);
+    cloudPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(cloudTopic, 5);
     image_transport::ImageTransport it(nh);
-    imgPub = it.advertise("/segpc_yolov7/color_features", 1);
+    imgPub = it.advertise(imgPubTopic, 1);
 }       
 
 /*
@@ -132,17 +147,17 @@ cv::Mat PcSegmenter::combineMask(std::vector<yolov7_ros::ObjectData>& inputObjDa
 /*
 extract shi-tomasi features from color image
 */
-std::vector<cv::Point2f> PcSegmenter::getShiTomasi(cv::Mat& inputColor, cv::Mat& mask, int maxCorners) 
+std::vector<cv::Point2f> PcSegmenter::getShiTomasi(cv::Mat& inputColor, cv::Mat& mask) 
 {
     cv::Mat inputGray;
     cv::cvtColor(inputColor, inputGray, cv::COLOR_BGR2GRAY);
-    maxCorners = MAX(maxCorners, 1);
     std::vector<cv::Point2f> corners;
-    double qualityLevel = 0.01;
-    double minDistance = 10;
-    int blockSize = 3, gradientSize = 3;
-    bool useHarrisDetector = false;
-    double k = 0.04;
+    // maxCorners = MAX(maxCorners, 1);
+    // double qualityLevel = 0.01;
+    // double minDistance = 10;
+    // int blockSize = 3, gradientSize = 3;
+    // bool useHarrisDetector = false;
+    // double k = 0.04;
     cv::goodFeaturesToTrack(inputGray,
                             corners,
                             maxCorners,
@@ -258,7 +273,7 @@ void PcSegmenter::publishPc()
         cv::Mat compositeMask = combineMask(inputObjData);
 
         // extract Shi-Tomasi features
-        std::vector<cv::Point2f> corners = getShiTomasi(inputColor, compositeMask, 80);
+        std::vector<cv::Point2f> corners = getShiTomasi(inputColor, compositeMask);
 
         // deproject depth image
         // pcl::PointCloud<pcl::PointXYZ>cloud;
@@ -269,7 +284,7 @@ void PcSegmenter::publishPc()
         cloudPub.publish(cloud);
 
         // publish image with shi-tomasi features
-        cv::Mat outputColor = inputColor.clone();
+        cv::Mat outputColor;
         cv::cvtColor(inputColor, outputColor, cv::COLOR_BGR2RGB);
         showShiTomasi(inputColor, outputColor, corners);
         sensor_msgs::ImagePtr imgMsg;

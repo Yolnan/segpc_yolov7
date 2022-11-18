@@ -7,12 +7,10 @@ PcSegmenter::PcSegmenter(ros::NodeHandle& _nh): nh{_nh}
     ros::param::get("/color_topic", colorTopic );
     ros::param::get("/camera_info_topic", camInfoTopic);
     ros::param::get("/publish_topic", pcTopic);
+
     roiAcquired = false;   // flag to prevent publishing before roi is acquired
     depthAcquired = false; // flag to prevent publishing before depth image is acquired
     colorAcquired = false; // flag to prevent publishing before color image is acquired
-    cameraInfoSub = nh.subscribe(camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
-    // PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZ>>(pcTopic, 1);
-    PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(pcTopic, 5);
 
     int minDepthInt, maxDepthInt;
     ros::param::get("/min_depth", minDepthInt);
@@ -20,14 +18,11 @@ PcSegmenter::PcSegmenter(ros::NodeHandle& _nh): nh{_nh}
     minDepth = minDepthInt;
     maxDepth = maxDepthInt;
     
-    classList = {"person", "chair", "tvmonitor", "bottle", "cell phone"};
-    colors = {{255, 255, 255}, {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 0, 255}};
-    colorDict = { {classList[0], colors[0]},
-                                {classList[1], colors[1]},
-                                {classList[2], colors[2]},
-                                {classList[3], colors[3]},
-                                {classList[4], colors[4]}
-    };
+    cameraInfoSub = nh.subscribe(camInfoTopic,1, &PcSegmenter::cbCameraInfo, this);
+    // PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZ>>(pcTopic, 1);
+    PcSegmenter:pub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>(pcTopic, 5);
+    image_transport::ImageTransport it(nh);
+    image_transport::Publisher pub = it.advertise("/segpc_yolov7/color_features", 1);
 }       
 
 /*
@@ -64,7 +59,7 @@ void PcSegmenter::cbDepthImage(const sensor_msgs::ImageConstPtr &msg)
 {
     if(lock.try_lock())
     { 
-        //convert ROS sensor image msg to cv::Mat 
+        // convert ROS sensor image msg to cv::Mat 
         depthImage = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_16UC1)->image; // depth in mm as uint16
         depthAcquired = true;
         lock.unlock(); // release the lock 
@@ -75,7 +70,7 @@ void PcSegmenter::cbColorImage(const sensor_msgs::ImageConstPtr& msg)
 {
     if(lock.try_lock())
     { 
-        //convert ROS sensor image msg to cv::Mat 
+        // convert ROS sensor image msg to cv::Mat 
         colorImage = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_8UC3)->image; // depth in mm as uint16
         colorAcquired = true;
         lock.unlock(); // release the lock 
@@ -140,7 +135,6 @@ extract shi-tomasi features from color image
 */
 std::vector<cv::Point2f> PcSegmenter::getShiTomasi(cv::Mat& inputColor, cv::Mat& mask, int maxCorners) 
 {
-    //extract Shi-Tomasi features
     cv::Mat inputGray;
     cv::cvtColor(inputColor, inputGray, cv::COLOR_BGR2GRAY);
     maxCorners = MAX(maxCorners, 1);

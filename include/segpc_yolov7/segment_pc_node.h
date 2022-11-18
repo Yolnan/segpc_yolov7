@@ -11,6 +11,7 @@
 #include <opencv2/opencv.hpp>
 #include "sensor_msgs/Image.h" 
 #include "sensor_msgs/CameraInfo.h"
+#include <image_transport/image_transport.h>
 // pointcloud and pcl
 #include "sensor_msgs/PointCloud2.h"
 #include <pcl_ros/point_cloud.h>
@@ -21,43 +22,49 @@
 #include <mutex>   
 // primitives and storage
 #include <iostream>
-#include <map>
 #include <vector>
 
 class PcSegmenter
 {
     private:
+        // ROS
         ros::NodeHandle nh;
+
+        // threadlocking
         std::mutex lock;
 
+        // yolov7_ros
         std::string roiTopic;
         ros::Subscriber roiSub;
         std::vector<yolov7_ros::ObjectData> objDataList;
         bool roiAcquired;
 
+        // depth image
         std::string depthTopic;
         ros::Subscriber depthSub;
         cv::Mat depthImage;
         bool depthAcquired;
 
+        // color image
         std::string colorTopic;
         ros::Subscriber colorSub;
         cv::Mat colorImage;
         bool colorAcquired;
 
+        // camera info
         std::string camInfoTopic;
         ros::Subscriber cameraInfoSub;
         cv::Mat camMatInv;
         std::string camFrameID;
         
+        // publisher
         ros::Publisher pub;
         std::string pcTopic;
         
+        // depth range filter params
         ushort minDepth;
         ushort maxDepth;
-        std::vector<std::string> classList;
-        std::vector<std::vector<unsigned char>> colors;
-        std::map<std::string, std::vector<unsigned char>> colorDict;
+
     public:
         PcSegmenter(ros::NodeHandle& nh);
         void cbRoi(const yolov7_ros::DetectionDataArrayConstPtr& detectionData);
@@ -67,6 +74,7 @@ class PcSegmenter
         cv::Mat combineMask(std::vector<yolov7_ros::ObjectData>& inputObjData);
         std::vector<cv::Point2f> getShiTomasi(cv::Mat& inputColor, cv::Mat& mask, int maxCorners);
         void publishPc();
+        
     
 };
 
